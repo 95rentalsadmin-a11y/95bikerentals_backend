@@ -1,0 +1,142 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Bike {
+  id              String   @id @default(uuid())
+  name            String
+  image           String
+  features        String   // JSON string
+  baseRatePerHour Int
+  baseRate12Hours Int
+  baseRate24Hours Int
+  category        String   // 'scooter' | 'motorcycle' | 'electric'
+  available       Boolean  @default(true)
+  // Package pricing (0 = package not available for this bike)
+  price1Day       Int      @default(0)
+  price2Days      Int      @default(0)
+  price3Days      Int      @default(0)
+  price7Days      Int      @default(0)
+  // Maintenance tracking
+  odometer        Int      @default(0) // kilometers
+  lastServiceDate String?  // ISO date string
+  nextServiceDue  String?  // ISO date string
+  maintenanceNote String   @default("")
+  status          String   @default("active") // 'active' | 'maintenance' | 'retired'
+  bookings        Booking[]
+}
+
+model Accessory {
+  id            String            @id @default(uuid())
+  name          String
+  description   String            @default("")
+  pricePerDay   Int               @default(0)
+  available     Boolean           @default(true)
+  bookings      BookingAccessory[]
+  createdAt     String            @default("")
+}
+
+model Coupon {
+  id              String   @id @default(uuid())
+  code            String   @unique
+  description     String   @default("")
+  discountType    String   // 'percentage' | 'flat'
+  discountValue   Int
+  minOrderAmount  Int       @default(0)
+  maxUses         Int       @default(0) // 0 = unlimited
+  usesCount       Int       @default(0)
+  validFrom       String
+  validUntil      String
+  active          Boolean  @default(true)
+  createdAt       String   @default("")
+}
+
+model Booking {
+  id                String            @id @default(uuid())
+  bikeId            String
+  customerId        String?
+  customerName      String
+  customerPhone     String
+  customerEmail     String
+  customerAddress   String
+  idProof           String
+  idProofFilePath   String?
+  startDate         String
+  endDate           String
+  startTime         String
+  endTime           String
+  calculatedRate    Int
+  durationHours     Int
+  securityDeposit   Int               @default(0)
+  // GST / tax breakdown
+  baseAmount        Int               @default(0) // pre-tax rental
+  gstAmount         Int               @default(0)
+  gstRate          Int               @default(0) // percentage
+  accessoriesTotal  Int               @default(0)
+  discountAmount    Int               @default(0)
+  // Coupon
+  couponId          String?
+  couponCode        String?
+  // Package (e.g. 1, 2, 3, 7 days). Null = custom dates.
+  packageDays      Int?
+  // Return tracking
+  actualReturnDate  String?
+  actualReturnTime  String?
+  lateReturnCharge  Int               @default(0)
+  // Status
+  status            String            @default("pending") // 'pending' | 'confirmed' | 'cancelled' | 'completed'
+  // Payment tracking
+  paymentStatus     String            @default("pending") // 'pending' | 'paid' | 'failed' | 'refunded' | 'cash' | 'whatsapp'
+  paymentMethod     String? // 'razorpay' | 'cash' | 'whatsapp'
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  razorpaySignature String?
+  createdAt         String
+  updatedAt         String            @default("")
+  bike              Bike              @relation(fields: [bikeId], references: [id])
+  customer          Customer?         @relation(fields: [customerId], references: [id])
+  accessories       BookingAccessory[]
+
+  @@index([customerPhone])
+  @@index([bikeId])
+  @@index([status])
+  @@index([customerId])
+}
+
+model BookingAccessory {
+  id          String    @id @default(uuid())
+  bookingId   String
+  accessoryId String
+  quantity    Int       @default(1)
+  priceAtBooking Int    @default(0)
+  booking     Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  accessory   Accessory @relation(fields: [accessoryId], references: [id])
+
+  @@index([bookingId])
+  @@index([accessoryId])
+}
+
+model Customer {
+  id            String    @id @default(uuid())
+  phone         String    @unique
+  name          String    @default("")
+  email         String    @default("")
+  address       String    @default("")
+  idProof       String    @default("")
+  idProofFilePath String?
+  totalBookings  Int      @default(0)
+  totalSpent     Int      @default(0)
+  createdAt      String   @default("")
+  updatedAt      String   @default("")
+  bookings       Booking[]
+
+  @@index([phone])
+}
