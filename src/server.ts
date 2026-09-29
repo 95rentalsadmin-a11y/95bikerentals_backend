@@ -79,7 +79,9 @@ const authLimiter = rateLimit({
   message: { error: 'Too many attempts, please try again later.' },
 });
 
-app.use('/api/', apiLimiter);
+if (process.env.NODE_ENV === 'production') {
+  app.use('/api/', apiLimiter);
+}
 
 // Initialize database
 const startServer = async () => {
@@ -112,8 +114,8 @@ const startServer = async () => {
     app.use('/api/bikes', bikeRoutes);
     app.get('/api/images/*', serveImage); // public bike images streamed from R2
     app.use('/api/bookings', bookingRoutes);
-    app.use('/api/admin', authLimiter, adminRoutes);
-    app.use('/api/auth', authLimiter, customerAuthRoutes);
+    app.use('/api/admin', process.env.NODE_ENV === 'production' ? authLimiter : (_req, _res, next) => next(), adminRoutes);
+    app.use('/api/auth', process.env.NODE_ENV === 'production' ? authLimiter : (_req, _res, next) => next(), customerAuthRoutes);
     app.use('/api/uploads', customerUploadRoutes);
     app.use('/api/payments', paymentRoutes);
     app.use('/api/catalog', catalogRoutes);

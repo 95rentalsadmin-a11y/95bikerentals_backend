@@ -110,6 +110,12 @@ export const isOverlapping = (
 // Default refundable security deposit (in INR). Can be overridden per bike later.
 export const DEFAULT_SECURITY_DEPOSIT = 500;
 
+export const getSecurityDeposit = async (): Promise<number> => {
+  const setting = await prisma.appSetting.findUnique({ where: { key: 'securityDeposit' } });
+  const value = Number(setting?.value);
+  return Number.isInteger(value) && value >= 0 ? value : DEFAULT_SECURITY_DEPOSIT;
+};
+
 // Fetch a bike and compute the rate for a given duration, throwing if the bike is missing.
 export const computeRateForBike = async (bikeId: string, durationHours: number) => {
   const bike = await prisma.bike.findUnique({ where: { id: bikeId } });

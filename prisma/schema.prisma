@@ -140,3 +140,9 @@ model Customer {
 
   @@index([phone])
 }
+
+model AppSetting {
+  key       String @id
+  value     String
+  updatedAt String @default("")
+}

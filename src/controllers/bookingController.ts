@@ -8,7 +8,7 @@ import {
   computeRate,
   computePackageRate,
   getPackagePrice,
-  DEFAULT_SECURITY_DEPOSIT,
+  getSecurityDeposit,
 } from '../utils/rate';
 import {
   sendBookingCreatedSms,
@@ -50,10 +50,17 @@ export const createBooking = async (req: CustomerRequest, res: Response) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
+    if (!/^(?:\+91|91)?[6-9]\d{9}$/.test(customerPhone.replace(/[\s-]/g, ''))) {
+      return res.status(400).json({ error: 'Invalid mobile number' });
+    }
+
     // Validate required fields
     if (!bikeId || !customerName || !customerEmail || !customerAddress ||
         !idProof || !startDate || !endDate || !startTime || !endTime) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(customerEmail.trim())) {
+      return res.status(400).json({ error: 'Invalid email address' });
     }
 
     // Check if bike exists and is available
@@ -167,6 +174,7 @@ export const createBooking = async (req: CustomerRequest, res: Response) => {
     const gstAmount = Math.round((taxableAmount * rateBreakdown.gstRate) / 100);
     const calculatedRate = taxableAmount + gstAmount;
 
+    const securityDeposit = await getSecurityDeposit();
     let booking;
     try {
       booking = await prisma.$transaction(async (tx) => {
@@ -201,7 +209,7 @@ export const createBooking = async (req: CustomerRequest, res: Response) => {
             endTime,
             calculatedRate,
             durationHours: roundedDuration,
-            securityDeposit: DEFAULT_SECURITY_DEPOSIT,
+            securityDeposit,
             baseAmount: rateBreakdown.rentalTotal,
             gstAmount,
             gstRate: rateBreakdown.gstRate,
@@ -591,7 +599,7 @@ export const calculateRate = async (req: CustomerRequest, res: Response) => {
       bikeId,
       durationHours: breakdown.durationHours,
       calculatedRate: total,
-      securityDeposit: DEFAULT_SECURITY_DEPOSIT,
+      securityDeposit: await getSecurityDeposit(),
       breakdown: {
         ...breakdown,
         accessoriesTotal,

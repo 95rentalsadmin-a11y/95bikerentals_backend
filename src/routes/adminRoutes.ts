@@ -12,6 +12,9 @@ import {
   updateBike,
   updateBikeAvailability,
   updateBookingStatus,
+  updateBookingDeposit,
+  getDepositSetting,
+  updateDepositSetting,
   returnBike,
   getCustomers,
 } from '../controllers/adminController';
@@ -42,6 +45,9 @@ router.post('/bikes/upload-image', adminAuth, upload.single('image'), uploadBike
 router.patch('/bikes/:id', adminAuth, updateBike);
 router.patch('/bikes/:id/availability', adminAuth, updateBikeAvailability);
 router.patch('/bookings/:id/status', adminAuth, updateBookingStatus);
+router.patch('/bookings/:id/deposit', adminAuth, updateBookingDeposit);
+router.get('/settings/security-deposit', adminAuth, getDepositSetting);
+router.patch('/settings/security-deposit', adminAuth, updateDepositSetting);
 router.post('/bookings/:id/return', adminAuth, returnBike);
 router.get('/customers', adminAuth, getCustomers);
 

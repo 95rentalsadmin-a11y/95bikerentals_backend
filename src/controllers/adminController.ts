@@ -2,7 +2,7 @@ import { Response } from 'express';
 import jwt from 'jsonwebtoken';
 import prisma from '../database/database';
 import { AdminRequest } from '../middleware/adminAuth';
-import { parseDateTime, computeDurationHours } from '../utils/rate';
+import { parseDateTime, computeDurationHours, getSecurityDeposit } from '../utils/rate';
 import { downloadFromR2 } from '../config/r2';
 import {
   sendBookingConfirmedSms,
@@ -316,6 +316,45 @@ export const updateBookingStatus = async (req: AdminRequest, res: Response) => {
     console.error('Error updating booking status:', error);
     res.status(500).json({ error: 'Failed to update booking status' });
   }
+};
+
+export const updateBookingDeposit = async (req: AdminRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const securityDeposit = Number(req.body.securityDeposit);
+
+    if (!Number.isInteger(securityDeposit) || securityDeposit < 0) {
+      return res.status(400).json({ error: 'Security deposit must be a non-negative whole number' });
+    }
+
+    const booking = await prisma.booking.update({
+      where: { id },
+      data: { securityDeposit, updatedAt: new Date().toISOString() },
+    });
+
+    res.json(booking);
+  } catch (error) {
+    console.error('Error updating booking deposit:', error);
+    res.status(500).json({ error: 'Failed to update booking deposit' });
+  }
+};
+
+export const getDepositSetting = async (_req: AdminRequest, res: Response) => {
+  res.json({ securityDeposit: await getSecurityDeposit() });
+};
+
+export const updateDepositSetting = async (req: AdminRequest, res: Response) => {
+  const securityDeposit = Number(req.body.securityDeposit);
+  if (!Number.isInteger(securityDeposit) || securityDeposit < 0) {
+    return res.status(400).json({ error: 'Security deposit must be a non-negative whole number' });
+  }
+
+  await prisma.appSetting.upsert({
+    where: { key: 'securityDeposit' },
+    create: { key: 'securityDeposit', value: String(securityDeposit), updatedAt: new Date().toISOString() },
+    update: { value: String(securityDeposit), updatedAt: new Date().toISOString() },
+  });
+  res.json({ securityDeposit });
 };
 
 // Admin: mark a bike as returned, computing late-return charges if applicable.
