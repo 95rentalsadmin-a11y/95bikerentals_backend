@@ -11,6 +11,7 @@ import customerAuthRoutes from './routes/customerAuthRoutes';
 import customerUploadRoutes from './routes/customerUploadRoutes';
 import paymentRoutes from './routes/paymentRoutes';
 import catalogRoutes from './routes/catalogRoutes';
+import { serveImage } from './controllers/uploadController';
 
 dotenv.config();
 
@@ -109,6 +110,7 @@ const startServer = async () => {
     });
 
     app.use('/api/bikes', bikeRoutes);
+    app.get('/api/images/*', serveImage); // public bike images streamed from R2
     app.use('/api/bookings', bookingRoutes);
     app.use('/api/admin', authLimiter, adminRoutes);
     app.use('/api/auth', authLimiter, customerAuthRoutes);
