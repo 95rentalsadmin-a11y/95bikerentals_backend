@@ -18,6 +18,11 @@ dotenv.config();
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
 
+// The API runs behind a reverse proxy in production. Trust the first proxy so
+// rate limiting uses the real visitor IP instead of grouping every visitor
+// under the hosting provider's proxy address.
+app.set('trust proxy', 1);
+
 // Allowed origins for CORS. Comma-separated in .env, e.g.
 // ALLOWED_ORIGINS=http://localhost:3000,https://95bikerentals.in
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:3001')
