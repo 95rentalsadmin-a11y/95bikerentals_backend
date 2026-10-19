@@ -120,8 +120,8 @@ export const isOverlapping = (
   return bookingStart < requestedEnd && bookingEnd > requestedStart;
 };
 
-// Default refundable security deposit (in INR). Can be overridden per bike later.
-export const DEFAULT_SECURITY_DEPOSIT = 500;
+// Security deposit is currently waived for all rentals.
+export const DEFAULT_SECURITY_DEPOSIT = 0;
 
 // Fetch a bike and compute the rate for a given duration, throwing if the bike is missing.
 export const computeRateForBike = async (bikeId: string, durationHours: number) => {

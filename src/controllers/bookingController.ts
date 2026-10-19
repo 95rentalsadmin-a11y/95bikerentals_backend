@@ -23,6 +23,8 @@ interface AccessorySelection {
   quantity: number;
 }
 
+const isComplimentaryAccessory = (name: string) => name.trim().toLowerCase().includes('helmet');
+
 // Create a booking. The customer JWT is required (enforced in routes).
 // Rate and duration are recomputed server-side from the bike + selected
 // date/time window; client-supplied values are ignored for pricing.
@@ -140,11 +142,12 @@ export const createBooking = async (req: CustomerRequest, res: Response) => {
           return res.status(400).json({ error: `Accessory ${sel.accessoryId} not available` });
         }
         const qty = Math.max(1, Math.floor(sel.quantity || 1));
+        const complimentary = isComplimentaryAccessory(acc.name);
         // Price is per day; charge for ceil(durationHours/24) days
         const days = Math.max(1, Math.ceil(roundedDuration / 24));
-        const lineTotal = acc.pricePerDay * qty * days;
+        const lineTotal = complimentary ? 0 : acc.pricePerDay * qty * days;
         accessoriesTotal += lineTotal;
-        bookingAccessoryData.push({ accessoryId: acc.id, quantity: qty, priceAtBooking: acc.pricePerDay });
+        bookingAccessoryData.push({ accessoryId: acc.id, quantity: qty, priceAtBooking: complimentary ? 0 : acc.pricePerDay });
       }
     }
 
@@ -599,7 +602,8 @@ export const calculateRate = async (req: CustomerRequest, res: Response) => {
         const acc = accessoryMap.get(sel.accessoryId);
         if (!acc) continue;
         const qty = Math.max(1, Math.floor(sel.quantity || 1));
-        const lineTotal = acc.pricePerDay * qty * days;
+        const complimentary = isComplimentaryAccessory(acc.name);
+        const lineTotal = complimentary ? 0 : acc.pricePerDay * qty * days;
         accessoriesTotal += lineTotal;
         accessoryList.push({ id: acc.id, name: acc.name, quantity: qty, lineTotal });
       }
