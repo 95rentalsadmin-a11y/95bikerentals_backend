@@ -1,0 +1,4 @@
+ALTER TABLE "Booking" ADD COLUMN "refundStatus" TEXT NOT NULL DEFAULT 'none',
+ADD COLUMN "refundAmount" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "razorpayRefundId" TEXT,
+ADD COLUMN "refundedAt" TEXT;

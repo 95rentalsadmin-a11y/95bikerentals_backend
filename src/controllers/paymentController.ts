@@ -177,6 +177,12 @@ export const razorpayWebhook = async (req: CustomerRequest, res: Response) => {
       return res.json({ status: 'no_booking' });
     }
 
+    // Razorpay may retry a webhook. Once the booking is paid, the event is
+    // already applied and can safely be acknowledged without another write.
+    if (event.event === 'payment.captured' && booking.paymentStatus === 'paid') {
+      return res.json({ status: 'already_processed' });
+    }
+
     if (event.event === 'payment.captured' && payment.status === 'captured') {
       await prisma.booking.update({
         where: { id: booking.id },

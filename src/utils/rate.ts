@@ -82,18 +82,31 @@ export const computeDurationHours = (
 
 // Parse "YYYY-MM-DD" + "7:00 AM" / "10:30 PM" into a Date object
 export const parseDateTime = (dateStr: string, timeStr: string): Date => {
+  const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!dateMatch) throw new Error(`Invalid date format: ${dateStr}`);
   const timeMatch = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
   if (!timeMatch) {
     throw new Error(`Invalid time format: ${timeStr}`);
   }
   let hours = parseInt(timeMatch[1], 10);
   const minutes = parseInt(timeMatch[2], 10);
+  if (hours < 1 || hours > 12 || minutes < 0 || minutes > 59) {
+    throw new Error(`Invalid time value: ${timeStr}`);
+  }
   const period = timeMatch[3].toUpperCase();
 
   if (period === 'PM' && hours !== 12) hours += 12;
   if (period === 'AM' && hours === 12) hours = 0;
 
   const date = new Date(`${dateStr}T00:00:00`);
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== Number(dateMatch[1]) ||
+    date.getMonth() + 1 !== Number(dateMatch[2]) ||
+    date.getDate() !== Number(dateMatch[3])
+  ) {
+    throw new Error(`Invalid date value: ${dateStr}`);
+  }
   date.setHours(hours, minutes, 0, 0);
   return date;
 };

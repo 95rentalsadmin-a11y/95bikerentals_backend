@@ -91,6 +91,9 @@ model Booking {
   actualReturnDate  String?
   actualReturnTime  String?
   lateReturnCharge  Int               @default(0)
+  lateFeeStatus     String            @default("none") // 'none' | 'due' | 'settled'
+  depositStatus     String            @default("held") // 'held' | 'refunded' | 'applied'
+  depositRefundAmount Int             @default(0)
   // Status
   status            String            @default("pending") // 'pending' | 'confirmed' | 'cancelled' | 'completed'
   // Payment tracking
@@ -99,6 +102,10 @@ model Booking {
   razorpayOrderId   String?
   razorpayPaymentId String?
   razorpaySignature String?
+  refundStatus      String            @default("none") // 'none' | 'pending' | 'processed' | 'not_eligible' | 'failed'
+  refundAmount      Int               @default(0)
+  razorpayRefundId  String?
+  refundedAt        String?
   createdAt         String
   updatedAt         String            @default("")
   bike              Bike              @relation(fields: [bikeId], references: [id])

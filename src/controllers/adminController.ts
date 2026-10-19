@@ -4,6 +4,7 @@ import prisma from '../database/database';
 import { AdminRequest } from '../middleware/adminAuth';
 import { parseDateTime, computeDurationHours } from '../utils/rate';
 import { downloadFromR2 } from '../config/r2';
+import { isRazorpayConfigured, razorpay, rupeesToPaise } from '../config/razorpay';
 import {
   sendBookingConfirmedSms,
   sendBookingCancelledSms,
@@ -44,11 +45,11 @@ export const getDashboardStats = async (req: AdminRequest, res: Response) => {
       },
     });
     const totalBikes = await prisma.bike.count();
-    const availableBikes = await prisma.bike.count({ where: { available: true } });
+    const availableBikes = await prisma.bike.count({ where: { available: true, status: 'active' } });
     const pendingBookings = await prisma.booking.count({ where: { status: 'pending' } });
     const revenueAggregate = await prisma.booking.aggregate({
       where: { status: { not: 'cancelled' }, paymentStatus: 'paid' },
-      _sum: { calculatedRate: true },
+      _sum: { calculatedRate: true, lateReturnCharge: true },
     });
     const pendingPayments = await prisma.booking.count({
       where: { paymentStatus: 'pending' },
@@ -61,9 +62,14 @@ export const getDashboardStats = async (req: AdminRequest, res: Response) => {
       totalBikes,
       availableBikes,
       pendingBookings,
-      totalRevenue: revenueAggregate._sum.calculatedRate || 0,
+      totalRevenue: (revenueAggregate._sum.calculatedRate || 0) + (revenueAggregate._sum.lateReturnCharge || 0),
       pendingPayments,
       paidBookings,
+      recentActivity: await prisma.booking.findMany({
+        take: 5,
+        orderBy: { updatedAt: 'desc' },
+        select: { id: true, status: true, paymentStatus: true, updatedAt: true, customerName: true, bike: { select: { name: true } } },
+      }),
     });
   } catch (error) {
     console.error('Error fetching dashboard stats:', error);
@@ -291,6 +297,38 @@ export const updateBookingStatus = async (req: AdminRequest, res: Response) => {
       return res.status(404).json({ error: 'Booking not found' });
     }
 
+    if (status === 'cancelled' && existing.status !== 'cancelled' && existing.paymentStatus === 'paid') {
+      if (!existing.razorpayPaymentId || !isRazorpayConfigured() || !razorpay) {
+        return res.status(503).json({ error: 'Paid booking cannot be cancelled until refunds are configured' });
+      }
+      const start = parseDateTime(existing.startDate, existing.startTime);
+      const hoursUntilStart = (start.getTime() - Date.now()) / (1000 * 60 * 60);
+      const refundPercent = hoursUntilStart >= 24 ? 100 : hoursUntilStart > 0 ? 50 : 0;
+      const refundAmount = Math.round(((existing.calculatedRate + (existing.securityDeposit || 0)) * refundPercent) / 100);
+      let refundId: string | undefined;
+      if (refundAmount > 0) {
+        const refund = await razorpay.payments.refund(existing.razorpayPaymentId, {
+          amount: rupeesToPaise(refundAmount),
+          notes: { bookingId: existing.id, reason: 'admin_cancellation' },
+        });
+        refundId = refund.id;
+      }
+      const booking = await prisma.booking.update({
+        where: { id },
+        data: {
+          status,
+          paymentStatus: 'refunded',
+          refundStatus: refundAmount > 0 ? 'processed' : 'not_eligible',
+          refundAmount,
+          razorpayRefundId: refundId,
+          refundedAt: refundAmount > 0 ? new Date().toISOString() : undefined,
+          updatedAt: new Date().toISOString(),
+        },
+      });
+      sendBookingCancelledSms(booking.customerPhone, booking.id, existing.bike.name).catch(() => {});
+      return res.json(booking);
+    }
+
     const booking = await prisma.booking.update({
       where: { id },
       data: { status, updatedAt: new Date().toISOString() },
@@ -359,8 +397,11 @@ export const returnBike = async (req: AdminRequest, res: Response) => {
         actualReturnDate,
         actualReturnTime,
         lateReturnCharge,
+        lateFeeStatus: lateReturnCharge > 0 && lateReturnCharge <= booking.securityDeposit ? 'settled' : lateReturnCharge > 0 ? 'due' : 'none',
+        depositStatus: lateReturnCharge > 0 ? 'applied' : 'refunded',
+        depositRefundAmount: Math.max(0, booking.securityDeposit - lateReturnCharge),
         updatedAt: new Date().toISOString(),
-      },
+      } as any, // Prisma client is regenerated during deployment after this migration.
       include: { bike: true, accessories: { include: { accessory: true } } },
     });
 
@@ -469,58 +510,42 @@ export const getCustomers = async (req: AdminRequest, res: Response) => {
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
 
-    const bookings = await prisma.booking.findMany({
-      include: { bike: true },
-      orderBy: { createdAt: 'desc' },
-    });
+    const where = search ? {
+      OR: [
+        { name: { contains: search, mode: 'insensitive' as const } },
+        { phone: { contains: search } },
+        { email: { contains: search, mode: 'insensitive' as const } },
+      ],
+    } : undefined;
+    const [customers, total] = await Promise.all([
+      prisma.customer.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { updatedAt: 'desc' },
+        include: { bookings: { include: { bike: true }, orderBy: { createdAt: 'desc' } } },
+      }),
+      prisma.customer.count({ where }),
+    ]);
 
-    const customerMap = new Map<string, any>();
-
-    for (const booking of bookings) {
-      const key = booking.customerPhone;
-      if (!customerMap.has(key)) {
-        customerMap.set(key, {
-          id: `C-${booking.customerPhone.slice(-4)}`,
-          name: booking.customerName,
-          phone: booking.customerPhone,
-          email: booking.customerEmail,
-          idProof: booking.idProof,
-          totalBookings: 0,
-          totalSpent: 0,
-          lastBooking: booking.createdAt,
-          history: [],
-        });
-      }
-      const customer = customerMap.get(key);
-      customer.totalBookings += 1;
-      if (booking.status !== 'cancelled') {
-        customer.totalSpent += booking.calculatedRate;
-      }
-      customer.history.push({
+    const paginated = customers.map((customer) => ({
+      id: customer.id,
+      name: customer.name,
+      phone: customer.phone,
+      email: customer.email,
+      idProof: customer.idProof,
+      totalBookings: customer.bookings.length,
+      totalSpent: customer.bookings.filter((booking) => booking.status !== 'cancelled').reduce((sum, booking) => sum + booking.calculatedRate, 0),
+      lastBooking: customer.bookings[0]?.createdAt || customer.updatedAt,
+      history: customer.bookings.map((booking) => ({
         id: booking.id,
         bikeName: booking.bike?.name || 'Unknown Bike',
         startDate: booking.startDate,
         endDate: booking.endDate,
         amount: booking.calculatedRate,
         status: booking.status,
-      });
-    }
-
-    let customers = Array.from(customerMap.values()).sort((a, b) => b.totalBookings - a.totalBookings);
-
-    // Apply search filter
-    if (search) {
-      const q = search.toLowerCase();
-      customers = customers.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.phone.includes(search) ||
-          (c.email && c.email.toLowerCase().includes(q))
-      );
-    }
-
-    const total = customers.length;
-    const paginated = customers.slice((page - 1) * limit, page * limit);
+      })),
+    }));
 
     res.json({
       customers: paginated,

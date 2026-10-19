@@ -16,6 +16,7 @@ import {
   sendBookingCancelledSms,
   sendBookingCompletedSms,
 } from '../utils/smsNotifications';
+import { isRazorpayConfigured, razorpay, rupeesToPaise } from '../config/razorpay';
 
 interface AccessorySelection {
   accessoryId: string;
@@ -50,15 +51,33 @@ export const createBooking = async (req: CustomerRequest, res: Response) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
+    const validPaymentMethods = ['razorpay', 'whatsapp', 'cash'];
+    const parsedPackageDays = packageDays ? Number(packageDays) : 0;
+    const validPackageDays = [0, 1, 2, 3, 7].includes(parsedPackageDays);
+    const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(customerEmail || ''));
+    const validDate = /^\d{4}-\d{2}-\d{2}$/.test(String(startDate)) && /^\d{4}-\d{2}-\d{2}$/.test(String(endDate));
+    const validTime = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i;
+
     // Validate required fields
     if (!bikeId || !customerName || !customerEmail || !customerAddress ||
         !idProof || !startDate || !endDate || !startTime || !endTime) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
+    if (!validEmail || String(customerName).length > 120 || String(customerAddress).length > 500 ||
+        String(idProof).length > 100 || !validDate || !validTime.test(String(startTime)) ||
+        !validTime.test(String(endTime)) || !validPaymentMethods.includes(paymentMethod) || !validPackageDays) {
+      return res.status(400).json({ error: 'Invalid booking details' });
+    }
+    if (Array.isArray(accessories) && accessories.some((item) =>
+      !item || typeof item.accessoryId !== 'string' || !Number.isFinite(Number(item.quantity)) ||
+      Number(item.quantity) < 1 || Number(item.quantity) > 10
+    )) {
+      return res.status(400).json({ error: 'Invalid accessory selection' });
+    }
 
     // Check if bike exists and is available
     const bike = await prisma.bike.findUnique({
-      where: { id: bikeId, available: true },
+      where: { id: bikeId, available: true, status: 'active' },
     });
     if (!bike) {
       return res.status(404).json({ error: 'Bike not available' });
@@ -96,7 +115,7 @@ export const createBooking = async (req: CustomerRequest, res: Response) => {
     }
 
     // Use package pricing if a valid package is selected, otherwise fall back to hourly/daily
-    const packageDaysNum = packageDays ? parseInt(packageDays, 10) : 0;
+    const packageDaysNum = parsedPackageDays;
     const packagePrice = packageDaysNum > 0 ? getPackagePrice(bike, packageDaysNum) : 0;
     const rateBreakdown = packagePrice > 0
       ? computePackageRate(bike, packageDaysNum)
@@ -379,16 +398,50 @@ export const cancelBooking = async (req: CustomerRequest, res: Response) => {
       return res.status(400).json({ error: 'Cannot cancel a completed booking' });
     }
 
+    const start = parseDateTime(existing.startDate, existing.startTime);
+    const hoursUntilStart = (start.getTime() - Date.now()) / (1000 * 60 * 60);
+    const refundPercent = hoursUntilStart >= 24 ? 100 : hoursUntilStart > 0 ? 50 : 0;
+    const paidAmount = existing.calculatedRate + (existing.securityDeposit || 0);
+    const refundAmount = existing.paymentStatus === 'paid'
+      ? Math.round((paidAmount * refundPercent) / 100)
+      : 0;
+    let razorpayRefundId: string | undefined;
+
+    if (existing.paymentStatus === 'paid' && !existing.razorpayPaymentId) {
+      return res.status(409).json({ error: 'Paid booking is missing its payment reference' });
+    }
+    if (refundAmount > 0) {
+      if (!isRazorpayConfigured() || !razorpay) {
+        return res.status(503).json({ error: 'Refund service is not configured' });
+      }
+      const refund = await razorpay.payments.refund(existing.razorpayPaymentId!, {
+        amount: rupeesToPaise(refundAmount),
+        notes: { bookingId: existing.id, reason: 'customer_cancellation' },
+      });
+      razorpayRefundId = refund.id;
+    }
+
     const booking = await prisma.booking.update({
       where: { id },
-      data: { status: 'cancelled', updatedAt: new Date().toISOString() },
+      data: {
+        status: 'cancelled',
+        paymentStatus: existing.paymentStatus === 'paid' ? 'refunded' : existing.paymentStatus,
+        refundStatus: existing.paymentStatus === 'paid' ? (refundAmount > 0 ? 'processed' : 'not_eligible') : 'none',
+        refundAmount,
+        razorpayRefundId,
+        refundedAt: refundAmount > 0 ? new Date().toISOString() : undefined,
+        updatedAt: new Date().toISOString(),
+      },
     });
 
     // Decrement customer's totalSpent on cancellation
     if (existing.customerId) {
       await prisma.customer.update({
         where: { id: existing.customerId },
-        data: { totalSpent: { decrement: existing.calculatedRate } },
+        data: {
+          totalBookings: { decrement: 1 },
+          totalSpent: { decrement: existing.calculatedRate },
+        },
       });
     }
 
@@ -415,7 +468,7 @@ export const checkAvailability = async (req: CustomerRequest, res: Response) => 
     }
 
     const bike = await prisma.bike.findUnique({
-      where: { id: bikeId, available: true },
+      where: { id: bikeId, available: true, status: 'active' },
     });
     if (!bike) {
       return res.status(404).json({ error: 'Bike not available' });
@@ -468,7 +521,7 @@ export const checkAvailabilityAll = async (req: CustomerRequest, res: Response) 
       return res.status(400).json({ error: 'End time must be after start time' });
     }
 
-    const bikes = await prisma.bike.findMany({ where: { available: true } });
+    const bikes = await prisma.bike.findMany({ where: { available: true, status: 'active' } });
     const bookings = await prisma.booking.findMany({
       where: {
         status: { notIn: ['cancelled', 'completed'] },
@@ -505,7 +558,7 @@ export const calculateRate = async (req: CustomerRequest, res: Response) => {
   try {
     const { bikeId, startDate, endDate, startTime, endTime, durationHours, accessories, couponCode, packageDays } = req.body;
 
-    const bike = await prisma.bike.findUnique({ where: { id: bikeId } });
+    const bike = await prisma.bike.findUnique({ where: { id: bikeId, available: true, status: 'active' } });
     if (!bike) {
       return res.status(404).json({ error: 'Bike not found' });
     }

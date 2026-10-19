@@ -4,7 +4,7 @@ import prisma from '../database/database';
 export const getAllBikes = async (req: Request, res: Response) => {
   try {
     const bikes = await prisma.bike.findMany({
-      where: { available: true }
+      where: { available: true, status: 'active' }
     });
     const formattedBikes = bikes.map((bike) => ({
       ...bike,
@@ -21,7 +21,7 @@ export const getBikeById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const bike = await prisma.bike.findUnique({
-      where: { id }
+      where: { id, available: true, status: 'active' }
     });
 
     if (!bike) {

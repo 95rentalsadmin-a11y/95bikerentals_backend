@@ -112,7 +112,10 @@ const startServer = async () => {
     app.use('/api/bikes', bikeRoutes);
     app.get('/api/images/*', serveImage); // public bike images streamed from R2
     app.use('/api/bookings', bookingRoutes);
-    app.use('/api/admin', authLimiter, adminRoutes);
+    // Limit only admin login attempts. Mounting this limiter on every admin
+    // route makes normal dashboard navigation consume the login quota.
+    app.use('/api/admin/login', authLimiter);
+    app.use('/api/admin', adminRoutes);
     app.use('/api/auth', authLimiter, customerAuthRoutes);
     app.use('/api/uploads', customerUploadRoutes);
     app.use('/api/payments', paymentRoutes);

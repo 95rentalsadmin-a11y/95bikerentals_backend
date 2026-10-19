@@ -11,8 +11,13 @@ const bikesSeed = [
     baseRatePerHour: 50,
     baseRate12Hours: 425,
     baseRate24Hours: 580,
+    price1Day: 580,
+    price2Days: 1160,
+    price3Days: 1740,
+    price7Days: 3333,
     category: 'motorcycle',
-    available: true
+    available: true,
+    status: 'active'
   },
   {
     id: '2',
@@ -22,8 +27,13 @@ const bikesSeed = [
     baseRatePerHour: 50,
     baseRate12Hours: 425,
     baseRate24Hours: 580,
+    price1Day: 580,
+    price2Days: 1160,
+    price3Days: 1740,
+    price7Days: 3333,
     category: 'scooter',
-    available: true
+    available: true,
+    status: 'active'
   },
   {
     id: '3',
@@ -33,8 +43,13 @@ const bikesSeed = [
     baseRatePerHour: 50,
     baseRate12Hours: 425,
     baseRate24Hours: 580,
+    price1Day: 580,
+    price2Days: 1160,
+    price3Days: 1740,
+    price7Days: 3333,
     category: 'scooter',
-    available: true
+    available: true,
+    status: 'active'
   },
   {
     id: '4',
@@ -44,8 +59,13 @@ const bikesSeed = [
     baseRatePerHour: 50,
     baseRate12Hours: 425,
     baseRate24Hours: 580,
+    price1Day: 580,
+    price2Days: 1160,
+    price3Days: 1740,
+    price7Days: 3333,
     category: 'scooter',
-    available: true
+    available: true,
+    status: 'active'
   },
   {
     id: '5',
@@ -55,8 +75,13 @@ const bikesSeed = [
     baseRatePerHour: 75,
     baseRate12Hours: 600,
     baseRate24Hours: 800,
+    price1Day: 800,
+    price2Days: 1600,
+    price3Days: 2400,
+    price7Days: 4800,
     category: 'electric',
-    available: true
+    available: true,
+    status: 'active'
   }
 ];
 

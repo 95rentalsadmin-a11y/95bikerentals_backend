@@ -7,7 +7,7 @@ Node.js/TypeScript backend API for the 95 Bike Rentals application.
 - Bike management (CRUD operations)
 - Booking system with availability checking
 - Rate calculation based on duration
-- SQLite database for data persistence
+- PostgreSQL database managed with Prisma migrations
 - RESTful API endpoints
 
 ## Tech Stack
@@ -15,14 +15,17 @@ Node.js/TypeScript backend API for the 95 Bike Rentals application.
 - Node.js
 - TypeScript
 - Express.js
-- SQLite (better-sqlite3)
+- PostgreSQL + Prisma
 - CORS
+- Razorpay payments and refunds
+- Firebase customer authentication
+- S3-compatible image and ID-proof storage
 
 ## Installation
 
 1. Install dependencies:
 ```bash
-npm install
+pnpm install
 ```
 
 2. Set up environment variables:
@@ -30,19 +33,21 @@ The `.env` file is already configured with default values:
 ```
 PORT=5000
 NODE_ENV=development
+DATABASE_URL=postgresql://...
+JWT_SECRET=replace-me
 ```
 
 ## Running the Server
 
 Development mode (with hot reload):
 ```bash
-npm run dev
+pnpm dev
 ```
 
 Production mode:
 ```bash
-npm run build
-npm start
+pnpm build
+pnpm start
 ```
 
 ## API Endpoints
@@ -51,14 +56,14 @@ npm start
 
 - `GET /api/bikes` - Get all available bikes
 - `GET /api/bikes/:id` - Get a specific bike by ID
-- `PATCH /api/bikes/:id/availability` - Update bike availability
+- Bike availability updates are admin-only at `PATCH /api/admin/bikes/:id/availability`
 
 ### Bookings
 
-- `POST /api/bookings` - Create a new booking
-- `GET /api/bookings/:id` - Get booking by ID
-- `GET /api/bookings/phone/:phone` - Get bookings by phone number
-- `PATCH /api/bookings/:id/cancel` - Cancel a booking
+- `POST /api/bookings` - Create a booking (customer authentication required)
+- `GET /api/bookings/:id` - Get a booking (owner authentication required)
+- `GET /api/bookings/me` - Get the authenticated customer's bookings
+- `PATCH /api/bookings/:id/cancel` - Cancel a booking and apply the refund policy
 - `POST /api/bookings/check-availability` - Check bike availability for dates
 - `POST /api/bookings/calculate-rate` - Calculate rental rate
 
@@ -114,12 +119,13 @@ curl -X POST http://localhost:5000/api/bookings/calculate-rate \
 
 ## Database
 
-The application uses SQLite database (`rentals.db`) which is automatically created on first run. The database includes:
+The application uses PostgreSQL. Run migrations before starting production:
 
-- **bikes table**: Stores bike information with rates and availability
-- **bookings table**: Stores booking details and status
+```bash
+pnpm prisma migrate deploy
+```
 
-The database is automatically seeded with 5 bikes on first startup.
+The server seeds the five starter bikes when the bike table is empty. Package pricing is backfilled by the package-pricing migration.
 
 ## Project Structure
 
