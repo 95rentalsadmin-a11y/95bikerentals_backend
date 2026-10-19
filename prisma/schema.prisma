@@ -139,6 +139,7 @@ model Customer {
   address       String    @default("")
   idProof       String    @default("")
   idProofFilePath String?
+  pushToken      String?
   totalBookings  Int      @default(0)
   totalSpent     Int      @default(0)
   createdAt      String   @default("")

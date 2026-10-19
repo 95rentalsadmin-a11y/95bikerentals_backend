@@ -16,6 +16,10 @@ import {
   sendBookingCancelledSms,
   sendBookingCompletedSms,
 } from '../utils/smsNotifications';
+import {
+  sendBookingCreatedPush,
+  sendBookingCancelledPush,
+} from '../utils/pushNotifications';
 import { isRazorpayConfigured, razorpay, rupeesToPaise } from '../config/razorpay';
 
 interface AccessorySelection {
@@ -311,8 +315,9 @@ export const createBooking = async (req: CustomerRequest, res: Response) => {
       throw error;
     }
 
-    // Send SMS notification (async, non-blocking)
+    // Send SMS + push notifications (async, non-blocking)
     sendBookingCreatedSms(customerPhone, booking.id, bike.name, startDate, startTime).catch(() => {});
+    sendBookingCreatedPush(customerPhone, booking.id, bike.name, startDate, startTime).catch(() => {});
 
     res.status(201).json({
       id: booking.id,
@@ -448,8 +453,9 @@ export const cancelBooking = async (req: CustomerRequest, res: Response) => {
       });
     }
 
-    // Send SMS notification
+    // Send SMS + push notifications
     sendBookingCancelledSms(phone, booking.id, existing.bike.name).catch(() => {});
+    sendBookingCancelledPush(phone, booking.id, existing.bike.name).catch(() => {});
 
     res.json({
       message: 'Booking cancelled successfully',

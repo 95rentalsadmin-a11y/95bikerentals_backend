@@ -9,6 +9,7 @@ import {
   CURRENCY,
   rupeesToPaise,
 } from '../config/razorpay';
+import { sendPaymentSuccessPush, sendBookingConfirmedPush } from '../utils/pushNotifications';
 
 // Create a Razorpay order for a booking. The booking must already exist
 // (created with paymentMethod = 'razorpay' and paymentStatus = 'pending').
@@ -128,6 +129,10 @@ export const verifyRazorpayPayment = async (req: CustomerRequest, res: Response)
       },
     });
 
+    const paidBike = await prisma.bike.findUnique({ where: { id: booking.bikeId } });
+    sendPaymentSuccessPush(booking.customerPhone, updated.id, booking.calculatedRate).catch(() => {});
+    sendBookingConfirmedPush(booking.customerPhone, updated.id, paidBike?.name ?? 'your bike', updated.startDate, updated.startTime).catch(() => {});
+
     res.json({
       message: 'Payment verified successfully',
       bookingId: updated.id,
@@ -194,6 +199,9 @@ export const razorpayWebhook = async (req: CustomerRequest, res: Response) => {
           updatedAt: new Date().toISOString(),
         },
       });
+      const hookBike = await prisma.bike.findUnique({ where: { id: booking.bikeId } });
+      sendPaymentSuccessPush(booking.customerPhone, booking.id, booking.calculatedRate).catch(() => {});
+      sendBookingConfirmedPush(booking.customerPhone, booking.id, hookBike?.name ?? 'your bike', booking.startDate, booking.startTime).catch(() => {});
     } else if (event.event === 'payment.failed') {
       await prisma.booking.update({
         where: { id: booking.id },

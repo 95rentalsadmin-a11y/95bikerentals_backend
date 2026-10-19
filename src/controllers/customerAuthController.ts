@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { initFirebaseAdmin } from '../config/firebaseAdmin';
+import prisma from '../database/database';
+import { CustomerRequest } from '../middleware/customerAuth';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret';
 const DEV_FIREBASE_TOKEN = 'dev-firebase-token';
@@ -54,5 +56,29 @@ export const verifyCustomerToken = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error verifying customer token:', error);
     res.status(500).json({ error: 'Failed to verify token' });
+  }
+};
+
+// Saves the customer's Expo push token (sent by the mobile app after login).
+export const savePushToken = async (req: CustomerRequest, res: Response) => {
+  try {
+    const { pushToken } = req.body;
+    if (!pushToken || typeof pushToken !== 'string' || !pushToken.startsWith('ExponentPushToken')) {
+      return res.status(400).json({ error: 'Valid Expo push token is required' });
+    }
+    const mobile = req.customer?.mobile;
+    if (!mobile) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const now = new Date().toISOString();
+    await prisma.customer.upsert({
+      where: { phone: mobile },
+      update: { pushToken, updatedAt: now },
+      create: { phone: mobile, pushToken, createdAt: now, updatedAt: now },
+    } as any); // Prisma client is regenerated during deployment after this migration.
+    res.json({ message: 'Push token saved' });
+  } catch (error) {
+    console.error('Error saving push token:', error);
+    res.status(500).json({ error: 'Failed to save push token' });
   }
 };

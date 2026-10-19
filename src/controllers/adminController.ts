@@ -10,6 +10,11 @@ import {
   sendBookingCancelledSms,
   sendBookingCompletedSms,
 } from '../utils/smsNotifications';
+import {
+  sendBookingConfirmedPush,
+  sendBookingCancelledPush,
+  sendBookingCompletedPush,
+} from '../utils/pushNotifications';
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || (process.env.NODE_ENV === 'production' ? '' : 'admin');
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || (process.env.NODE_ENV === 'production' ? '' : 'admin');
@@ -326,6 +331,7 @@ export const updateBookingStatus = async (req: AdminRequest, res: Response) => {
         },
       });
       sendBookingCancelledSms(booking.customerPhone, booking.id, existing.bike.name).catch(() => {});
+      sendBookingCancelledPush(booking.customerPhone, booking.id, existing.bike.name).catch(() => {});
       return res.json(booking);
     }
 
@@ -334,7 +340,7 @@ export const updateBookingStatus = async (req: AdminRequest, res: Response) => {
       data: { status, updatedAt: new Date().toISOString() },
     });
 
-    // Send SMS notifications on status change
+    // Send SMS + push notifications on status change
     if (status === 'confirmed' && existing.status !== 'confirmed') {
       sendBookingConfirmedSms(
         booking.customerPhone,
@@ -343,10 +349,19 @@ export const updateBookingStatus = async (req: AdminRequest, res: Response) => {
         booking.startDate,
         booking.startTime
       ).catch(() => {});
+      sendBookingConfirmedPush(
+        booking.customerPhone,
+        booking.id,
+        existing.bike.name,
+        booking.startDate,
+        booking.startTime
+      ).catch(() => {});
     } else if (status === 'cancelled' && existing.status !== 'cancelled') {
       sendBookingCancelledSms(booking.customerPhone, booking.id, existing.bike.name).catch(() => {});
+      sendBookingCancelledPush(booking.customerPhone, booking.id, existing.bike.name).catch(() => {});
     } else if (status === 'completed' && existing.status !== 'completed') {
       sendBookingCompletedSms(booking.customerPhone, booking.id, existing.bike.name, 0).catch(() => {});
+      sendBookingCompletedPush(booking.customerPhone, booking.id, existing.bike.name, 0).catch(() => {});
     }
 
     res.json(booking);
@@ -405,8 +420,9 @@ export const returnBike = async (req: AdminRequest, res: Response) => {
       include: { bike: true, accessories: { include: { accessory: true } } },
     });
 
-    // Send SMS notification
+    // Send SMS + push notifications
     sendBookingCompletedSms(booking.customerPhone, booking.id, booking.bike.name, lateReturnCharge).catch(() => {});
+    sendBookingCompletedPush(booking.customerPhone, booking.id, booking.bike.name, lateReturnCharge).catch(() => {});
 
     res.json({
       message: 'Bike returned successfully',
